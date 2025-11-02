@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>On-Page SEO Audit Tool</title>
+    <!-- 1. Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 2. Use Inter font -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* 3. Set Inter as the default font */
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        /* Simple loader animation */
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+        .loader {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            border-left-color: #3b82f6; /* blue-500 */
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        /* Style for the copyable solution block */
+        .solution-box {
+            background-color: #f8fafc; /* gray-50 */
+            border: 1px solid #e2e8f0; /* gray-200 */
+            border-radius: 0.5rem;
+            padding: 0.75rem 1rem;
+            margin-top: 0.75rem;
+            font-family: monospace;
+            font-size: 0.875rem;
+            line-height: 1.25rem;
+            color: #1e293b; /* gray-800 */
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen p-4 md:p-8">
+
+    <div class="max-w-4xl mx-auto">
+        <!-- === Header and Input Section === -->
+        <div class="bg-white p-6 md:p-8 rounded-xl shadow-lg">
+            <h1 class="text-2xl md:text-3xl font-bold text-gray-900">On-Page SEO Audit Tool</h1>
+            <p class="text-gray-600 mt-2">Enter a URL and a focus keyword to generate an on-page SEO analysis based on the "Rank Math" checklist.</p>
+            
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
+                <!-- URL Input -->
+                <div class="md:col-span-2">
+                    <label for="url-input" class="block text-sm font-medium text-gray-700">URL to Audit</label>
+                    <input type="url" id="url-input" placeholder="https://example.com/my-article" class="mt-1 block w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                </div>
+                <!-- Keyword Input -->
+                <div>
+                    <label for="keyword-input" class="block text-sm font-medium text-gray-700">Focus Keyword</label>
+                    <input type="text" id="keyword-input" placeholder="e.g., 'best hiking boots'" class="mt-1 block w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                </div>
+            </div>
+
+            <!-- Audit Button -->
+            <button id="audit-button" class="w-full md:w-auto mt-6 px-8 py-3 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all duration-200">
+                Audit Now
+            </button>
+        </div>
+
+        <!-- === Loader === -->
+        <div id="loader" class="hidden mx-auto mt-12 loader"></div>
+
+        <!-- === Error Message === -->
+        <div id="error-message" class="hidden mt-8 bg-red-100 border border-red-300 text-red-800 px-5 py-4 rounded-lg shadow-md">
+            <!-- Error content injected by JS -->
+        </div>
+
+        <!-- === Results Section === -->
+        <div id="results-container" class="hidden mt-8 space-y-8">
+            <!-- Results injected by JS -->
+        </div>
+    </div>
+
+    <script>
+        // === DOM Elements ===
+        const urlInput = document.getElementById('url-input');
+        const keywordInput = document.getElementById('keyword-input');
+        const auditButton = document.getElementById('audit-button');
+        const loader = document.getElementById('loader');
+        const errorMessage = document.getElementById('error-message');
+        const resultsContainer = document.getElementById('results-container');
+
+        // === Event Listener ===
+        auditButton.addEventListener('click', runAudit);
+
+        // === Main Audit Function ===
+        async function runAudit() {
+            const url = urlInput.value.trim();
+            const keyword = keywordInput.value.trim();
+
+            // 1. Validation
+            if (!url || !keyword) {
+                showError("Please enter both a URL and a Focus Keyword.");
+                return;
+            }
+            if (!url.startsWith('http://') && !url.startsWith('https://')) {
+                showError("Please enter a valid URL (e.g., 'https://example.com').");
+                return;
+            }
+
+            // 2. Set loading state
+            loader.classList.remove('hidden');
+            auditButton.disabled = true;
+            auditButton.innerText = 'Auditing...';
+            errorMessage.classList.add('hidden');
+            resultsContainer.classList.add('hidden');
+            resultsContainer.innerHTML = '';
+
+            try {
+                // 3. Fetch Page HTML
+                const html = await fetchPage(url);
+                if (!html) {
+                    throw new Error("Failed to fetch page content after trying both proxies.");
+                }
+
+                // 4. Parse HTML
+                const doc = parseHTML(html, url);
+                const text = doc.body.textContent || "";
+                const pageUrl = new URL(url); // Get hostname for link analysis
+
+                // 5. Perform Audit
+                const auditResults = performAudit(doc, text, pageUrl, keyword);
+
+                // 6. Display Results
+                displayResults(auditResults);
+
+            } catch (error) {
+                console.error("Audit Failed:", error);
+                showError(`Failed to audit the URL. The server may be blocking requests, or the page is offline. (Error: ${error.message})`);
+            } finally {
+                // 7. Reset loading state
+                loader.classList.add('hidden');
+                auditButton.disabled = false;
+                auditButton.innerText = 'Audit Now';
+            }
+        }
+
+        // === Helper: Fetch Page via Proxy (Attempting two different services) ===
+        async function fetchPage(url) {
+            const proxies = [
+                // Primary Proxy (allorigins.win is common but can be slow)
+                `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+                // Backup Proxy (corsproxy.io is often faster/more reliable)
+                `https://corsproxy.io/?${encodeURIComponent(url)}`
+            ];
+
+            let html = null;
+
+            for (const proxyUrl of proxies) {
+                try {
+                    const response = await fetch(proxyUrl);
+                    if (response.ok) {
+                        html = await response.text();
+                        // Check for minimum content length to ensure the fetch succeeded, not the proxy failing silently.
+                        if (html.length > 100) { 
+                            return html;
+                        }
+                    }
+                } catch (e) {
+                    console.warn(`Fetch attempt failed for proxy: ${proxyUrl}. Trying next proxy...`, e);
+                }
+            }
+
+            return null; // Return null if both proxies fail to fetch or return meaningful content
+        }
+
+        // === Helper: Parse HTML String ===
+        function parseHTML(htmlString, baseUrl) {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(htmlString, 'text/html');
+            
+            // Fix relative URLs (for links, images) by setting the base URL
+            let base = doc.querySelector('base');
+            if (!base) {
+                base = doc.createElement('base');
+                base.href = baseUrl;
+                doc.head.prepend(base);
+            }
+            return doc;
+        }
+
+        // === Helper: Show Error ===
+        function showError(message) {
+            errorMessage.innerText = message;
+            errorMessage.classList.remove('hidden');
+            resultsContainer.classList.add('hidden');
+        }
+
+        // === Helper: Copy to Clipboard ===
+        function copyToClipboard(button) {
+            // Find the <pre> element, which is the button's previous sibling
+            const solutionElement = button.previousElementSibling;
+            if (!solutionElement || solutionElement.tagName !== 'PRE') {
+                console.error("Could not find solution text to copy.");
+                return;
+            }
+            
+            const textToCopy = solutionElement.innerText;
+
+            // Use fallback 'execCommand' as 'navigator.clipboard' might fail in sandboxed iframes
+            const textArea = document.createElement('textarea');
+            textArea.value = textToCopy;
+            textArea.style.position = 'fixed'; // Avoid scrolling
+            textArea.style.opacity = '0';
+            document.body.appendChild(textArea);
+            textArea.select();
+
+            try {
+                document.execCommand('copy');
+                button.innerText = 'Copied!';
+                setTimeout(() => {
+                    button.innerHTML = `
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                            <path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1h1v-1z"/>
+                            <path d="M9.5 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5h3zM-1 1.5A1.5 1.5 0 0 1 .5 0h3a1.5 1.5 0 0 1 1.5 1.5v1A1.5 1.5 0 0 1 3.5 4h-3A1.5 1.5 0 0 1 -1 2.5v-1z"/>
+                        </svg>
+                        <span>Copy Solution</span>`;
+                }, 2000);
+            } catch (err) {
+                console.error('Failed to copy text: ', err);
+                button.innerText = 'Error';
+            }
+
+            document.body.removeChild(textArea);
+        }
+        
+        // === Helper: Display Results ===
+        function displayResults(results) {
+            resultsContainer.classList.remove('hidden');
+
+            // Group results
+            const groups = {
+                'Basic SEO': results.slice(0, 5),
+                'Additional SEO': results.slice(5, 10),
+                'Title Readability': results.slice(10, 11), 
+                'Content Readability': results.slice(11), 
+            };
+
+            for (const [groupName, groupResults] of Object.entries(groups)) {
+                // Create section container
+                const section = document.createElement('div');
+                section.className = 'bg-white p-6 md:p-8 rounded-xl shadow-lg';
+                
+                // Section Title
+                const title = document.createElement('h2');
+                title.className = 'text-xl font-bold text-gray-900 mb-6 border-b border-gray-200 pb-4';
+                title.innerText = groupName;
+                section.appendChild(title);
+
+                // Add result boxes to section
+                groupResults.forEach(result => {
+                    if (!result) return; 
+                    const statusClass = result.status === 'PASS'
+                        ? 'bg-green-100 text-green-800'
+                        : 'bg-red-100 text-red-800';
+                    
+                    let solutionHtml = '';
+                    if (result.status === 'FAIL') {
+                        let suggestedSolutionBlock = '';
+                        if (result.solution && result.solution !== 'N/A') {
+                            suggestedSolutionBlock = `
+                                <div class="mt-3 relative">
+                                    <label class="block text-sm font-semibold text-gray-900 mb-1">[Suggested Solution]</label>
+                                    <pre class="solution-box">${result.solution}</pre>
+                                    <button onclick="copyToClipboard(this)" class="copy-btn absolute top-0 right-0 flex items-center space-x-2 bg-gray-200 text-gray-700 px-3 py-1.5 rounded-md text-sm font-medium hover:bg-gray-300 transition-all duration-200">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                                            <path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1h1v-1z"/>
+                                            <path d="M9.5 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5h3zM-1 1.5A1.5 1.5 0 0 1 .5 0h3a1.5 1.5 0 0 1 1.5 1.5v1A1.5 1.5 0 0 1 3.5 4h-3A1.5 1.5 0 0 1 -1 2.5v-1z"/>
+                                        </svg>
+                                        <span>Copy Solution</span>
+                                   </button>
+                                </div>`;
+                        }
+                        
+                        solutionHtml += `<p class="text-sm text-gray-800 mt-1"><strong class="font-semibold">[How to Fix]:</strong> ${result.howToFix}</p>`;
+                        solutionHtml += suggestedSolutionBlock;
+                    }
+
+
+                    const fixHtml = result.status === 'FAIL'
+                        ? `<div class="mt-3">
+                                <p class="text-sm text-gray-800"><strong class="font-semibold">[The Fix]:</strong> ${result.fix}</p>
+                                ${solutionHtml}
+                           </div>`
+                        : (result.howToFix && result.howToFix !== 'N/A' ? `<p class="text-sm text-gray-600 mt-2">${result.howToFix}</p>` : '');
+
+                    const box = document.createElement('div');
+                    box.className = 'result-box bg-gray-50 p-4 rounded-lg border border-gray-200 relative mb-4';
+                    box.innerHTML = `
+                        <div class="flex items-center">
+                            <span class="text-base font-semibold text-gray-800">${result.test}</span>
+                            <span class="ml-3 px-3 py-0.5 rounded-full text-xs font-bold ${statusClass}">
+                                ${result.status}
+                            </span>
+                        </div>
+                        ${fixHtml}
+                    `;
+                    section.appendChild(box);
+                });
+
+                resultsContainer.appendChild(section);
+            }
+        }
+
+
+        // === AUDIT LOGIC ===
+        // This function holds all the individual test functions.
+        function performAudit(doc, text, pageUrl, keyword) {
+            const results = [];
+            const k = keyword.toLowerCase(); // Lowercase keyword for comparisons
+            
+            // --- Gather Data ---
+            let title = doc.querySelector('title')?.innerText || '';
+            // Clean the title based on user request (remove sitename)
+            title = title.replace(/\| The Essential Cruise Shop Blog/i, '').trim();
+            title = title.replace(/- The Essential Cruise Shop Blog/i, '').trim();
+            title = title.replace(/\s+/, ' ').trim(); // Normalize spaces
+            
+            const metaDescription = doc.querySelector('meta[name="description"]')?.getAttribute('content') || '';
+            const first10Percent = text.substring(0, Math.floor(text.length * 0.1)).toLowerCase();
+            const wordCount = text.split(/\s+/).filter(Boolean).length;
+            const keywordRegex = new RegExp(keyword.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'), 'gi');
+            const keywordCount = (text.match(keywordRegex) || []).length;
+            const keywordDensity = wordCount > 0 ? (keywordCount / wordCount) * 100 : 0;
+            // Removed 'introduction' as a Power Word to force a FAIL when appropriate for rewriting
+            const powerWords = ["ultimate", "best", "warning", "amazing", "complete", "guide", "essential", "fast", "easy", "simple", "powerful", "proven", "shocking", "new", "updated"];
+            const hasPowerWord = powerWords.some(word => title.toLowerCase().includes(word));
+            const hasNumber = /\d/.test(title);
+
+            // === 1. Basic SEO ===
+            results.push(checkTest(
+                title.toLowerCase().includes(k),
+                "Focus Keyword in SEO Title",
+                "SEO Title does not contain the Focus Keyword.",
+                `The SEO Title is the most important place to have your keyword. It tells Google what the page is about.`,
+                `${keyword.charAt(0).toUpperCase() + keyword.slice(1)}: ${title.replace(new RegExp(k, 'i'), '').replace(/[:|-]\s*$/, '').trim()}` // Compliant solution
+            ));
+
+            const metaTestCondition = metaDescription && metaDescription.toLowerCase().includes(k);
+            const metaFix = metaDescription ? "Meta description does not contain the Focus Keyword." : "No meta description was found.";
+            const metaSolution = `Get the ultimate 2025 introduction to ${keyword}. We cover the ultra-luxury fleet, all-inclusive fares, dining, and what to expect onboard.`; // Generated solution
+            
+            results.push(checkTest(
+                metaTestCondition,
+                "Focus Keyword in Meta Description",
+                metaFix,
+                "A good meta description (under 160 chars) includes the keyword and convinces users to click from search results.",
+                metaSolution
+            ));
+            
+            results.push(checkTest(
+                first10Percent.includes(k),
+                "Focus Keyword in the first 10% of the content",
+                "The Focus Keyword was not found near the beginning of the content.",
+                "Mentioning your keyword early helps users and search engines confirm the page's topic.",
+                "N/A" // This requires manual writing, not a copy-paste solution
+            ));
+
+            results.push(checkTest(
+                wordCount >= 600,
+                "Content is 600+ words long",
+                `Content is too short (${wordCount} words).`,
+                "Expand the content to at least 600 words to provide more value, cover the topic in-depth, and improve ranking potential.",
+                "N/A" // No copyable solution
+            ));
+
+            // Special Density Test
+            const densityTest = { test: "Keyword Density is appropriate", status: 'FAIL', howToFix: "N/A", solution: "N/A" };
+            if (keywordDensity < 0.5 && keywordCount > 20) {
+                densityTest.status = 'PASS';
+                densityTest.howToFix = `Keyword density is low (${keywordDensity.toFixed(2)}%), but the count is high (${keywordCount} mentions) and placement is good. This is natural for long-form content. Do not 'keyword stuff'.`;
+            } else if (keywordDensity < 0.5) {
+                densityTest.fix = `Keyword density is very low (${keywordDensity.toFixed(2)}%).`;
+                densityTest.howToFix = `Naturally include "${keyword}" a few more times in the content to reinforce the topic.`;
+            } else if (keywordDensity > 2.5) {
+                densityTest.fix = `Keyword density is high (${keywordDensity.toFixed(2)}%). This could be seen as 'keyword stuffing'.`;
+                densityTest.howToFix = `Reduce the keyword density. Replace some instances of "${keyword}" with synonyms or rephrase sentences.`;
+            } else {
+                densityTest.status = 'PASS';
+                densityTest.howToFix = `Density is ${keywordDensity.toFixed(2)}%, which is in a good range.`;
+            }
+            results.push(densityTest);
+
+            // === 2. Additional SEO ===
+            const headings = Array.from(doc.querySelectorAll('h2, h3'));
+            const headingFound = headings.some(h => h.innerText.toLowerCase().includes(k));
+            const headingSolution = `What’s Included on a ${keyword} Cruise?`;
+
+            results.push(checkTest(
+                headingFound,
+                "Focus Keyword found in a subheading (H2, H3)",
+                "No H2 or H3 subheadings contain the Focus Keyword.",
+                "Adding your keyword to a subheading (H2 or H3) reinforces the page's topic for search engines.",
+                headingSolution 
+            ));
+
+            const imgs = Array.from(doc.querySelectorAll('img'));
+            // Note: We can only check the 'title' attribute if alt is empty, but we default to FAIL as a reminder
+            const altFound = imgs.some(img => img.alt && img.alt.toLowerCase().includes(k));
+            const altSolution = `A photo of the ${keyword} ship, the Crystal Serenity, sailing on the ocean.`;
+
+            results.push(checkTest(
+                altFound,
+                "At least one image alt text contains the Focus Keyword", 
+                "You cannot see alt text. This is a best-practice reminder.",
+                "Alt text improves accessibility and image search. Ensure at least one image describes the content and includes the keyword.",
+                altSolution
+            ));
+
+            const links = Array.from(doc.querySelectorAll('a[href]'));
+            const internalFound = links.some(link => link.href.includes(pageUrl.hostname) || (link.getAttribute('href') || '').startsWith('/'));
+            results.push(checkTest(
+                internalFound,
+                "Content includes internal links (links to the same website)",
+                "No internal links (links to your own site) were found.",
+                "Add 2-3 links to other relevant articles on your website. This helps with site navigation and SEO. (This is a 'fix later' item if the site is new).",
+                "N/A"
+            ));
+
+            const externalFound = links.some(link => {
+                try {
+                    const linkUrl = new URL(link.href);
+                    // Must be a link to a different hostname that is NOT nofollow/affiliate (difficult to check reliably without full page structure analysis, so we check for presence and give a PASS if there are links).
+                    return linkUrl.hostname && linkUrl.hostname !== pageUrl.hostname;
+                } catch (e) {
+                    return false; // Invalid URL
+                }
+            });
+            results.push(checkTest(
+                externalFound,
+                "Content includes relevant external 'dofollow' links",
+                "No external links (links to other websites) were found.",
+                "Add 1-2 relevant, authoritative external links (e.g., to a news site or reference) to build trust.",
+                "N/A"
+            ));
+
+            const urlTestCondition = pageUrl.pathname.toLowerCase().includes(k.replace(/\s+/g, '-'));
+            const urlSolution = `an-introduction-to-${keyword.replace(/\s+/g, '-')}`;
+
+            results.push(checkTest(
+                urlTestCondition, 
+                "URL contains the Focus Keyword", 
+                "The URL slug does not contain the Focus Keyword.",
+                `The URL slug should be short and include the keyword. This is a strong ranking signal.`,
+                urlSolution
+            ));
+            
+            // === 3. Title Readability (Combined Test) ===
+            const isLengthGood = title.length > 10 && title.length <= 60;
+            const isKeywordFirst = title.toLowerCase().startsWith(k.toLowerCase());
+            
+            const isTitleOptimized = isLengthGood && isKeywordFirst && hasPowerWord && hasNumber; 
+            
+            let titleFix = "";
+            let titleHowToFix = "";
+            let titleSolution = "N/A";
+
+            if (!isTitleOptimized) {
+                const fixes = [];
+                if (!isLengthGood) fixes.push(`Title is ${title.length > 60 ? 'too long' : 'too short'} (${title.length} chars)`);
+                if (!isKeywordFirst) fixes.push("Title does not start with the keyword");
+                if (!hasPowerWord) fixes.push("Title does not contain a Power Word");
+                if (!hasNumber) fixes.push("Title does not contain a number");
+                
+                titleFix = fixes.join(', ') + '.';
+                titleHowToFix = "A perfect title is under 60 chars, starts with the keyword, includes a power word (like 'Ultimate') and a number (like '2025') to boost clicks."; 
+                
+                // --- Generate a compliant solution ---
+                const nextYear = new Date().getFullYear() + 1;
+                
+                // 1. Get the non-keyword parts of the title
+                let cleanTitle = title.replace(new RegExp(k, 'gi'), '').trim();
+                // Remove common non-essential elements for a clean base
+                cleanTitle = cleanTitle.replace(/an? |the |a /gi, '').trim(); 
+                // Remove numbers (years) so we can add a new one
+                cleanTitle = cleanTitle.replace(/\(\d{4}\s*Guide\)|\d{4}|\s*guide\s*/gi, '').trim(); 
+                // Clean up separators/junk
+                cleanTitle = cleanTitle.replace(/^[\s|:-]+|[\s|:-]+$/g, '').trim(); 
+                cleanTitle = cleanTitle.replace(/([:|-])\s\1/g, '$1'); 
+                
+                // 2. Start building the new title with keyword first
+                let newTitle = `${keyword.charAt(0).toUpperCase() + keyword.slice(1)}`;
+                
+                // 3. Add Power Word (if missing) and rest of the title
+                let addedPowerWord = false;
+                if (!hasPowerWord) {
+                    newTitle += ": The Ultimate";
+                    addedPowerWord = true;
+                } else {
+                    newTitle += ":";
+                }
+
+                // 4. Add the cleaned title back
+                if (cleanTitle) {
+                    newTitle += ` ${cleanTitle}`;
+                } else if (!addedPowerWord) {
+                    // Fallback if title was just the keyword and a year, and no power word was added
+                    newTitle += " The Ultimate Guide";
+                }
+                newTitle = newTitle.replace(/: The Ultimate: /i, ': The Ultimate '); // Fix double colon if needed
+                newTitle = newTitle.replace(/: The Ultimate/i, ' The Ultimate'); // Clean if it's Keyword: The Ultimate
+
+                // 5. Add number (if missing)
+                const currentHasNumber = /\d/.test(newTitle);
+                if (!currentHasNumber) {
+                    newTitle = `${newTitle.trim()} (${nextYear} Guide)`; 
+                }
+                
+                // 6. Fix length (truncate if necessary)
+                if (newTitle.length > 60) {
+                    const suffix = ` (${nextYear} Guide)`;
+                    const keywordPart = newTitle.split(':')[0] + ': '; 
+                    
+                    let base = newTitle;
+                    // Try to protect the keyword and the year/guide suffix
+                    if (newTitle.includes(suffix)) {
+                         let body = newTitle.substring(keywordPart.length, newTitle.indexOf(suffix));
+                         let availableBodyLength = 60 - keywordPart.length - suffix.length - 3; // 3 for ellipsis
+                         
+                         if (availableBodyLength > 5) {
+                            body = body.substring(0, availableBodyLength) + '...';
+                            newTitle = keywordPart + body + suffix;
+                         }
+                    } else if (newTitle.length > 60) {
+                        // Generic truncate if structure is unpredictable
+                        newTitle = newTitle.substring(0, 57).trim() + '...';
+                    }
+                }
+                
+                titleSolution = newTitle.trim().replace(/\s{2,}/g, ' '); // Final clean up of spaces
+
+            }
+
+            results.push(checkTest(
+                isTitleOptimized,
+                "Title is Optimized (Length, Position, Power, Number)", 
+                titleFix,
+                titleHowToFix,
+                titleSolution
+            ));
+
+            // === 4. Content Readability ===
+            const paragraphs = Array.from(doc.querySelectorAll('p'));
+            const longParagraphs = paragraphs.filter(p => p.textContent.split(/\s+/).filter(Boolean).length > 150).length;
+            results.push(checkTest(
+                longParagraphs === 0,
+                "Content uses short paragraphs",
+                `Found ${longParagraphs} paragraph(s) longer than 150 words.`,
+                "Large blocks of text are hard to read on a screen. Break them into smaller, more readable chunks (ideally 3-4 lines each).",
+                "N/A"
+            ));
+
+            const mediaFound = (imgs.length + doc.querySelectorAll('video').length) > 0;
+            results.push(checkTest(
+                mediaFound,
+                "Content uses images or videos",
+                "No images or videos were detected in the content.",
+                "Add relevant images or videos to break up long blocks of text and improve user engagement.",
+                "N/A"
+            ));
+
+            const tocFound = text.toLowerCase().includes('table of contents') || text.toLowerCase().includes('in this guide') || links.filter(l => (l.getAttribute('href') || '').startsWith('#')).length > 5;
+            results.push(checkTest(
+                tocFound,
+                "Content uses a Table of Contents",
+                "A Table of Contents was not detected.",
+                "A ToC with anchor links helps users navigate long articles and can create 'sitelinks' in search results.",
+                "N/A"
+            ));
+            
+            results.push({
+                test: "Ignores Plugin Upsells",
+                status: 'PASS',
+                fix: "N/A",
+                howToFix: "This audit ignores plugin-specific upsells like 'Use Content AI' as they are not true SEO factors.",
+                solution: "N/A"
+            });
+
+            return results;
+        }
+        
+        // === Helper: Test template ===
+        function checkTest(condition, testName, fix, howToFix, solution) {
+            return {
+                test: testName,
+                status: condition ? 'PASS' : 'FAIL',
+                fix: condition ? 'N/A' : fix,
+                howToFix: condition ? 'N/A' : howToFix,
+                solution: condition ? 'N/A' : solution
+            };
+        }
+
+    </script>
+</body>
+</html>
